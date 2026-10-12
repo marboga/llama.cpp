@@ -51,7 +51,14 @@ void llama_model_qwen4exp::load_arch_hparams(llama_model_loader & ml) {
                                         ml.llm_kv(LLM_KV_HYPER_CONNECTION_COUNT).c_str(), hparams.dsv4_hc_mult));
     }
     qwen4exp_require_nonzero(ml, LLM_KV_HYPER_CONNECTION_LOW_RANK, hparams.hc_low_rank);
-    hparams.n_embd_out_impl = hparams.dsv4_hc_mult * hparams.n_embd;
+    // EMBED-FIX (private build, 2026-10-11): upstream widens n_embd_out to the hyper-connection state width
+    // (hc * n_embd) so the MTP state plumbing (llama_batch_ext_select_n_embd_state) can reuse it, but
+    // llama_context's embeddings extraction and the server's send_embedding also read n_embd_out floats
+    // from t_embd, whose rows are n_embd wide (it feeds the [n_embd x n_vocab] lm_head). In an embeddings
+    // context that read is hc x too long -> GGML_ASSERT("tensor read out of bounds") at the first decode.
+    // This build keeps n_embd_out == n_embd (correct pooled/token embeddings). MTP is NOT supported by
+    // this build (its state width would be wrong); use it for --embeddings launches only.
+    // hparams.n_embd_out_impl = hparams.dsv4_hc_mult * hparams.n_embd;
 
     ml.get_key(LLM_KV_ATTENTION_INDEXER_HEAD_COUNT, hparams.indexer_n_head);
     ml.get_key(LLM_KV_ATTENTION_INDEXER_KEY_LENGTH, hparams.indexer_head_size);
