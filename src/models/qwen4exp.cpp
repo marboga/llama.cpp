@@ -818,7 +818,10 @@ ggml_tensor * llama_model_qwen4exp::graph::build_qsa_sel(
     cb(score, "indexer_score", il);
 
     const int64_t n_top_pool = std::min<int64_t>(n_pool, hparams.indexer_top_k / kpool);
-    ggml_tensor * top_k = ggml_top_k(ctx0, score, n_top_pool); // [n_top_pool, n_tokens], unordered
+    // embed-fix (2026-10-11): ggml_top_k breaks exact ties (score 0.0 pools when fewer than n_top_pool pools score > 0) in
+    // atomicAdd arrival order on CUDA (ggml-cuda/top-k.cu radix gather), so the selected block set -- and every downstream
+    // hidden state -- differs run to run for prompts past ~2k tokens. argsort_top_k is a stable sort: deterministic membership.
+    ggml_tensor * top_k = ggml_cont(ctx0, ggml_argsort_top_k(ctx0, score, n_top_pool)); // [n_top_pool, n_tokens], deterministic
     cb(top_k, "indexer_top_k", il);
 
     // the top blocks, then the incomplete tail with n_kv for missing cells
