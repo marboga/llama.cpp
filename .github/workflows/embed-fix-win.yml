@@ -1,0 +1,42 @@
+# Private build for the ARC3 clean-core probe (2026-10-11): windows-cpu x64 job copied from release.yml's
+# `windows-cpu` (same runner, toolchain, flags), minus the check-release / UI-build dependencies.
+# The CUDA backend DLL is taken from the stock b11559 release zip (ggml is unchanged on this branch).
+name: embed-fix-win
+on:
+  workflow_dispatch:
+env:
+  CMAKE_ARGS: "-DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_TOOLS=ON -DLLAMA_BUILD_SERVER=ON -DGGML_RPC=ON"
+jobs:
+  windows-cpu-x64:
+    name: windows-cpu / x64 (embed-fix)
+    runs-on: windows-2025-vs2026
+    steps:
+      - name: Clone
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Install Ninja
+        run: |
+          choco install ninja
+      - name: Build
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          cmake -S . -B build -G "Ninja Multi-Config" ^
+            -D CMAKE_TOOLCHAIN_FILE=cmake/x64-windows-llvm.cmake ^
+            -DLLAMA_BUILD_BORINGSSL=ON ^
+            -DGGML_NATIVE=OFF ^
+            -DGGML_BACKEND_DL=ON ^
+            -DGGML_CPU_ALL_VARIANTS=ON ^
+            -DGGML_OPENMP=ON ^
+            -DGGML_OPENMP_FETCH=ON ^
+            ${{ env.CMAKE_ARGS }}
+          cmake --build build --config Release
+      - name: Pack artifacts
+        run: |
+          7z a -snl llama-embedfix-bin-win-cpu-x64.zip .\build\bin\Release\*
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: llama-embedfix-bin-win-cpu-x64
+          path: llama-embedfix-bin-win-cpu-x64.zip
