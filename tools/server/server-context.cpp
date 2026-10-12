@@ -3589,7 +3589,12 @@ private:
                                 return;
                             }
 
-                            const bool is_stateless_task = slot.task->type == SERVER_TASK_TYPE_EMBEDDING || slot.task->type == SERVER_TASK_TYPE_RERANK;
+                            // embed-fix (2026-10-11): an EMBEDDING task whose pooling lets the prompt be split (LAST pooling, causal
+                            // attention; see can_split()) produces the same KV/recurrent state as a completion prompt, so it may
+                            // reuse the slot's cached common prefix like any other task. Non-splittable (non-causal) pooling and
+                            // RERANK stay stateless. Without this, every /embeddings request re-prefills from token 0.
+                            const bool is_stateless_task = slot.task->type == SERVER_TASK_TYPE_RERANK ||
+                                                           (slot.task->type == SERVER_TASK_TYPE_EMBEDDING && !slot.can_split());
 
                             if (slot.task->params.cache_prompt && !is_stateless_task) {
                                 // reuse any previously computed tokens that are common with the new prompt
